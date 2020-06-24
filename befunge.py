@@ -336,7 +336,8 @@ class Swap(Command):
             penultimate = self.interpreter.pop()
         except IndexError:
             penultimate = 0
-        self.interpreter.push(last,penultimate)
+        self.interpreter.push(last)
+        self.interpreter.push(penultimate)
 
 
 class Discard(Command):
@@ -484,7 +485,9 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     # test.assert_equals(interpret('123...'),'321')   
     # test.assert_equals(interpret('>987v>.v\nv456<  :\n>321 ^ _@'), '123456789')
-    test.assert_equals(interpret(""">25*"!dlroW olleH":v
-                v:,_@
-                >  ^"""),'Hello World!\n')
+    # test.assert_equals(interpret(""">25*"!dlroW olleH":v
+    #             v:,_@
+    #             >  ^"""),'Hello World!\n')
+    test.assert_equals(interpret("""08>:1-:v v *_$.@ 
+  ^    _$>\:^"""),'40320')
 
