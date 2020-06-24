@@ -9,12 +9,13 @@ import random
 class Token:
     """A Befunge token"""
     value = None
+    string_format = "{type}('{value}')"
 
     def __init__(self,value=None):
         self.value = value
 
     def __str__(self):
-        return('{}({})'.format(self.__class__.__name__,self.value))
+        return(self.string_format.format(type=self.__class__.__name__,value=self.value))
 
     def __repr__(self):
         return self.__str__()
@@ -27,6 +28,11 @@ class EofToken(Token):
 
 class DigitToken(Token):
     """Digit [0-9] token"""
+    string_format = "{type}({value})"
+
+
+class StringToken(Token):
+    """String token"""
     pass
 
 
@@ -39,10 +45,14 @@ class Lexer:
     """A lexical analyzer for a Befunge program"""
 
     program = None
+    command_lexemes = None
     xpos = 0
     ypos = 0
     dx = 1
     dy = 0
+
+    def __init__(self):
+        self.command_lexemes = Command.dict().keys()
 
     def read(self,str):
         """Read program *str*"""
@@ -52,6 +62,30 @@ class Lexer:
         """Advance the pointer."""
         self.xpos += self.dx
         self.ypos += self.dy
+
+
+    @property
+    def current_character(self):
+        """The character at the program's current position."""
+        try:
+            char = self.program[self.ypos][self.xpos]
+        except IndexError:
+            raise
+        return char
+
+    def string(self):
+        """Read tokens in string mode.
+        
+        Scans characters until the next :code:`"` is found, 
+        yielding :class:`StringToken`s.
+        """
+        try:
+            while self.current_character != '"':
+                yield StringToken(self.current_character)
+                self.advance()
+        except IndexError:
+            raise SyntaxError("Program ended in string mode")
+
 
     def tokens(self):
         """Iterate over the program's tokens"""
@@ -63,8 +97,11 @@ class Lexer:
                 yield EofToken()
                 break
             if char.isdigit():
-                yield DigitToken(char)
-            elif char in '+-*/%!`><^v?_|":\\$.,#pg@ ':
+                yield DigitToken(int(char))
+            elif char == '"':
+                self.advance()
+                yield from self.string()
+            elif char in self.command_lexemes:
                 yield CommandToken(char)
             else:
                 raise SyntaxError("Illegal character: {}".format(char))
@@ -86,11 +123,16 @@ class Command:
         self.interpreter = interpreter
 
     def execute(self):
-        raise NotImplementedError
+        raise NotImplementedError("{}.execute".format(self.__class__.__name__))
 
     @classmethod
     def get_subclasses(cls):
-        """All descendant classes of this class"""
+        """All descendant classes of this class.
+        
+        Acknowledgements to Kimvais via `Stackoverflow`:_
+        
+        __ https://stackoverflow.com/a/33607093/297797
+        """
         for subclass in cls.__subclasses__():
             yield from subclass.get_subclasses()
             yield subclass    
@@ -173,6 +215,14 @@ class Minus(BinaryOperator):
         return b-a
 
 
+class Multiply(BinaryOperator):
+    """Multiplication: Pop `a` and `b`, then push `a*b`"""
+    token = "*"
+
+    def operate(self, a, b):
+        return a*b
+
+
 class Div(BinaryOperator):
     """Integer division: Pop `a` and `b`, then push `b/a`, rounded down.
     If `a` is zero, push zero."""
@@ -207,7 +257,7 @@ class UnaryOperator(Command):
         self.interpreter.push(self.operate(self.interpreter.pop()))
 
 
-class Not(Command):
+class Not(UnaryOperator):
     """Logical NOT: Pop a value. If the value is zero, push `1`; otherwise, push zero."""
     token = '!'
 
@@ -220,7 +270,7 @@ class OutputCommand(Command):
     format_string = None
 
     def execute(self):
-        self.interpreter.output.append('{:d}'.format(self.interpreter.pop()))
+        self.interpreter.output(self.format_string.format(self.interpreter.pop()))
 
 
 class OutputInteger(OutputCommand):
@@ -355,24 +405,6 @@ class Parser:
 
     def get_command(self,token):
         """convert a token to a command"""
-        # commands = {
-        #     "." : OutputInteger,
-        #     ">" : HeadRight,
-        #     "<" : HeadLeft,
-        #     "^" : HeadUp,
-        #     "v" : HeadDown,
-        #     ":" : Duplicate,
-        #     "_" : ChooseHorizontalDirection,
-        #     "?" : ChooseRandomDirection,
-        #     "\\" : Swap,
-        #     "$" : Discard,
-        #     "," : OutputAscii,
-        #     "#" : Skip,
-        #     "p" : Put,
-        #     "g" : Get,
-        #     "@" : End,
-        #     " " : NoopCommand
-        # }
         if token.value in self.commands:
             return self.commands[token.value](self.interpreter)
         else:
@@ -384,31 +416,40 @@ class BefungeInterpreter:
 
     lexer = None
     parser = None
-    data = None
-    output = None
+    _data = None
+    _output = None
 
     def __init__(self):
         self.lexer = Lexer()
         self.parser = Parser(self)
-        self.data = []
-        self.output = []
+        self._data = []
+        self._output = []
+
 
     def pop(self):
         """Pop a value off the data stack and return it."""
-        return self.data.pop()
+        return self._data.pop()
+
 
     def pop2(self):
         """Pop two values off the data stack and return them
         (in pop order)."""
-        return self.data.pop(), self.data.pop()
+        return self._data.pop(), self._data.pop()
+
 
     def push(self,value):
         """Push a value onto the data stack."""
-        self.data.append(value)
+        self._data.append(value)
+
 
     def peek(self):
         """Return the last value on the data stack (without popping it)."""
-        return self.data[-1]
+        return self._data[-1]
+
+
+    def output(self,value):
+        """Output a value."""
+        self._output.append(value)
 
     def interpret(self,str):
         """Interpret the string *str* as a Befunge program."""
@@ -418,18 +459,20 @@ class BefungeInterpreter:
         for token in self.lexer.tokens():
             logging.debug("Token: {}".format(token))
             if isinstance(token,DigitToken):
-                self.push(int(token.value))
+                self.push(token.value)
+            elif isinstance(token,StringToken):
+                self.push(ord(token.value))
             elif isinstance(token,CommandToken):
                 command = self.parser.get_command(token)
                 logging.debug("command: {}".format(command))
                 if isinstance(command,End):
-                    logging.info("End command found.  Stack = {}".format(self.data))
+                    logging.info("End command found.  Stack = {}".format(self._data))
                     break
                 else:
                     command.execute()
             elif isinstance(token,EofToken):
-                logging.info("End of file.  Stack = {}".format(self.data))
-        return "".join(self.output)
+                logging.info("End of file.  Stack = {}".format(self._data))
+        return "".join(self._output)
 
 
 def interpret(str):
@@ -439,6 +482,9 @@ def interpret(str):
 if __name__ == '__main__':
     import codewars_test as test
     logging.basicConfig(level=logging.DEBUG)
-    test.assert_equals(BefungeInterpreter().interpret('123...'),'321')   
-    test.assert_equals(BefungeInterpreter().interpret('>987v>.v\nv456<  :\n>321 ^ _@'), '123456789')
+    # test.assert_equals(interpret('123...'),'321')   
+    # test.assert_equals(interpret('>987v>.v\nv456<  :\n>321 ^ _@'), '123456789')
+    test.assert_equals(interpret(""">25*"!dlroW olleH":v
+                v:,_@
+                >  ^"""),'Hello World!\n')
 
