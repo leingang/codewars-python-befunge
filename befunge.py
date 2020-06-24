@@ -325,7 +325,7 @@ class ChooseRandomDirection(Command):
     token = '?'
 
     def execute(self):
-        command_class = random.choice(HeadLeft,HeadRight,HeadUp,HeadDown)
+        command_class = random.choice([HeadLeft,HeadRight,HeadUp,HeadDown])
         command_class(self.interpreter).execute()
 
 
