@@ -53,10 +53,13 @@ class Lexer:
 
     def __init__(self):
         self.command_lexemes = Command.dict().keys()
+        self.program = []
 
-    def read(self,str):
-        """Read program *str*"""
-        self.program = str.split('\n')
+    def read(self,string):
+        """Read program *string*"""
+        for line in string.split('\n'):
+            self.program.append(list(line))
+        logging.debug("read finished.  program={}".format(self.program))
 
     def advance(self):
         """Advance the pointer."""
