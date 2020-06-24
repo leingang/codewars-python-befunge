@@ -7,6 +7,6 @@ on building a basic interpreter in Python.
 
 Requires the [Codewars testing framework](https://github.com/codewars/python-test-framework):
 
-  python -m pip install https://github.com/codewars/python-test-framework/archive/v0.1.0.tar.gz
+    python -m pip install https://github.com/codewars/python-test-framework/archive/v0.1.0.tar.gz
 
 
